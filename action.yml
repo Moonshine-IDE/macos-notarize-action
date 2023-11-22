@@ -1,0 +1,53 @@
+name: "MacOS notarize app action"
+description: "Notarize a signed macOS pkg or app"
+
+inputs:
+  app-path:
+    description: "The name of the app to notarize"
+    required: true
+  mac-notarization-apple-id:
+    description: "The Apple ID to use for notarization"
+    required: true
+  mac-notarization-team-id:
+    description: "The team ID to use for notarization"
+    required: true
+  mac-notarization-pass:
+    description: "The password for the Apple ID"
+    required: true
+
+runs:
+  using: "composite"
+
+  steps:
+    - name: "Notarize app bundle"
+      shell: bash
+      run: |
+        # Store the notarization credentials so that we can prevent a UI password dialog
+        # from blocking the CI
+        echo "Create keychain profile"
+        xcrun notarytool \
+          store-credentials "notarytool-profile" \
+          --apple-id "${{ inputs.mac-notarization-apple-id }}" \
+          --team-id "${{ inputs.mac-notarization-team-id }}" \
+          --password "${{ inputs.mac-notarization-pass }}"
+
+        echo "Notarize app"
+        xcrun notarytool \
+          submit "${{ inputs.app-path }}" \
+          --keychain-profile "notarytool-profile" \
+          --wait
+
+        echo "Attach staple"
+        xcrun stapler \
+          staple "${{ inputs.app-path }}"
+
+    - name: Verify installer signature
+      shell: bash
+      run: |
+        pkgutil --check-signature "${{ inputs.app-path }}"
+        spctl \
+          --assess \
+          --type install \
+          --verbose \
+          --verbose \
+          "${{ inputs.app-path }}"
